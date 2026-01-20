@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 PDF Renamer - Renames PDF files based on Excel lookup
-Searches for PO numbers in Excel and renames PDFs accordingly
+Searches for PO numbers in Excel column and renames PDFs to the full cell text
 """
 
 import os
@@ -12,21 +12,19 @@ from openpyxl import load_workbook
 
 
 class PDFRenamer:
-    def __init__(self, pdf_folder, excel_file, search_column, rename_column, sheet_name=None):
+    def __init__(self, pdf_folder, excel_file, column, sheet_name=None):
         """
         Initialize PDF Renamer
 
         Args:
             pdf_folder: Path to folder containing PDF files
             excel_file: Path to Excel file
-            search_column: Column letter/number to search for PO numbers (e.g., 'A' or 1)
-            rename_column: Column letter/number with new names (e.g., 'B' or 2)
+            column: Column letter/number with PO numbers and new names (e.g., 'A' or 1)
             sheet_name: Excel sheet name (uses first sheet if None)
         """
         self.pdf_folder = Path(pdf_folder)
         self.excel_file = Path(excel_file)
-        self.search_column = search_column
-        self.rename_column = rename_column
+        self.column = column
         self.sheet_name = sheet_name
         self.lookup_data = {}
 
@@ -47,23 +45,23 @@ class PDFRenamer:
 
         print(f"Reading sheet: {sheet.title}")
 
-        # Convert column letters to numbers if needed
-        search_col = self._get_column_number(self.search_column)
-        rename_col = self._get_column_number(self.rename_column)
+        # Convert column letter to number if needed
+        col_num = self._get_column_number(self.column)
 
         # Build lookup dictionary
         row_count = 0
         for row in sheet.iter_rows(min_row=1, values_only=True):
-            search_value = row[search_col - 1] if len(row) >= search_col else None
-            rename_value = row[rename_col - 1] if len(row) >= rename_col else None
+            cell_value = row[col_num - 1] if len(row) >= col_num else None
 
-            if search_value and rename_value:
-                # Extract 10-digit number from search value if present
-                search_str = str(search_value)
-                po_match = re.search(r'\d{10}', search_str)
+            if cell_value:
+                # Convert to string and look for 10-digit PO number
+                cell_text = str(cell_value).strip()
+                po_match = re.search(r'\d{10}', cell_text)
+
                 if po_match:
                     po_number = po_match.group()
-                    self.lookup_data[po_number] = str(rename_value).strip()
+                    # Store the FULL cell text as the new name
+                    self.lookup_data[po_number] = cell_text
                     row_count += 1
 
         workbook.close()
@@ -187,28 +185,33 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description='Rename PDF files based on Excel lookup',
+        description='Rename PDF files based on Excel lookup (single column)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Dry run (preview changes)
-  python pdf_renamer.py /path/to/pdfs lookup.xlsx A B
+  python pdf_renamer.py /path/to/pdfs lookup.xlsx A
 
   # Actually rename files
-  python pdf_renamer.py /path/to/pdfs lookup.xlsx A B --execute
+  python pdf_renamer.py /path/to/pdfs lookup.xlsx A --execute
 
   # Specify sheet name
-  python pdf_renamer.py /path/to/pdfs lookup.xlsx A B --sheet "Sheet1" --execute
+  python pdf_renamer.py /path/to/pdfs lookup.xlsx A --sheet "Sheet1" --execute
 
-  # Use column numbers instead of letters
-  python pdf_renamer.py /path/to/pdfs lookup.xlsx 1 2 --execute
+  # Use column number instead of letter
+  python pdf_renamer.py /path/to/pdfs lookup.xlsx 1 --execute
+
+How it works:
+  - Finds PDFs named PO_xxxxxxxxxx.pdf in the folder
+  - Extracts the 10-digit number from filename
+  - Searches for that number in the Excel column
+  - Renames PDF to the FULL TEXT of the matching Excel cell
         """
     )
 
     parser.add_argument('pdf_folder', help='Folder containing PDF files')
     parser.add_argument('excel_file', help='Excel file with lookup data')
-    parser.add_argument('search_column', help='Column to search for PO numbers (letter or number, e.g., A or 1)')
-    parser.add_argument('rename_column', help='Column with new filenames (letter or number, e.g., B or 2)')
+    parser.add_argument('column', help='Column with PO numbers and new names (letter or number, e.g., A or 1)')
     parser.add_argument('--sheet', help='Excel sheet name (default: first sheet)')
     parser.add_argument('--execute', action='store_true', help='Actually rename files (default is dry-run)')
 
@@ -218,8 +221,7 @@ Examples:
         renamer = PDFRenamer(
             args.pdf_folder,
             args.excel_file,
-            args.search_column,
-            args.rename_column,
+            args.column,
             args.sheet
         )
 

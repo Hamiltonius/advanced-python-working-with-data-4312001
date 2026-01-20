@@ -1,11 +1,12 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Renames PDF files based on Excel lookup
+    Renames PDF files based on Excel lookup (single column)
 
 .DESCRIPTION
-    Searches for PO numbers (PO_xxxxxxxxxx.pdf) and renames them based on matching values in an Excel spreadsheet.
-    Extracts the 10-digit number, looks it up in a specified Excel column, and renames the PDF using a value from another column.
+    Searches for PO numbers (PO_xxxxxxxxxx.pdf) in Excel column and renames PDFs to the full cell text.
+    Extracts the 10-digit number from filename, finds it in the Excel column, and renames the PDF
+    to the FULL TEXT of that Excel cell.
 
 .PARAMETER PDFFolder
     Path to folder containing PDF files
@@ -13,11 +14,8 @@
 .PARAMETER ExcelFile
     Path to Excel file with lookup data
 
-.PARAMETER SearchColumn
-    Column number (1-based) to search for PO numbers
-
-.PARAMETER RenameColumn
-    Column number (1-based) with new filenames
+.PARAMETER Column
+    Column number (1-based) with PO numbers and new names
 
 .PARAMETER SheetName
     Excel sheet name (default: first sheet)
@@ -26,15 +24,15 @@
     Switch to actually rename files (default is dry-run/preview mode)
 
 .EXAMPLE
-    .\Rename-PDFsFromExcel.ps1 -PDFFolder "C:\PDFs" -ExcelFile "C:\lookup.xlsx" -SearchColumn 1 -RenameColumn 2
+    .\Rename-PDFsFromExcel.ps1 -PDFFolder "C:\PDFs" -ExcelFile "C:\lookup.xlsx" -Column 1
     Preview what would be renamed (dry run)
 
 .EXAMPLE
-    .\Rename-PDFsFromExcel.ps1 -PDFFolder "C:\PDFs" -ExcelFile "C:\lookup.xlsx" -SearchColumn 1 -RenameColumn 2 -Execute
+    .\Rename-PDFsFromExcel.ps1 -PDFFolder "C:\PDFs" -ExcelFile "C:\lookup.xlsx" -Column 1 -Execute
     Actually rename the files
 
 .EXAMPLE
-    .\Rename-PDFsFromExcel.ps1 -PDFFolder "C:\PDFs" -ExcelFile "C:\lookup.xlsx" -SearchColumn 1 -RenameColumn 2 -SheetName "Sheet1" -Execute
+    .\Rename-PDFsFromExcel.ps1 -PDFFolder "C:\PDFs" -ExcelFile "C:\lookup.xlsx" -Column 1 -SheetName "Sheet1" -Execute
     Specify sheet name and execute
 #>
 
@@ -47,10 +45,7 @@ param(
     [string]$ExcelFile,
 
     [Parameter(Mandatory=$true)]
-    [int]$SearchColumn,
-
-    [Parameter(Mandatory=$true)]
-    [int]$RenameColumn,
+    [int]$Column,
 
     [Parameter(Mandatory=$false)]
     [string]$SheetName = $null,
@@ -63,8 +58,7 @@ param(
 function Load-ExcelData {
     param(
         [string]$ExcelPath,
-        [int]$SearchCol,
-        [int]$RenameCol,
+        [int]$Col,
         [string]$Sheet
     )
 
@@ -100,14 +94,17 @@ function Load-ExcelData {
         $loadedCount = 0
 
         for ($row = 1; $row -le $rowCount; $row++) {
-            $searchValue = $worksheet.Cells.Item($row, $SearchCol).Text
-            $renameValue = $worksheet.Cells.Item($row, $RenameCol).Text
+            $cellValue = $worksheet.Cells.Item($row, $Col).Text
 
-            if ($searchValue -and $renameValue) {
+            if ($cellValue) {
+                # Convert to string and look for 10-digit PO number
+                $cellText = $cellValue.Trim()
+
                 # Extract 10-digit number using regex
-                if ($searchValue -match '\d{10}') {
+                if ($cellText -match '\d{10}') {
                     $poNumber = $matches[0]
-                    $lookupData[$poNumber] = $renameValue.Trim()
+                    # Store the FULL cell text as the new name
+                    $lookupData[$poNumber] = $cellText
                     $loadedCount++
                 }
             }
@@ -147,7 +144,7 @@ try {
     }
 
     # Load Excel data
-    $lookupData = Load-ExcelData -ExcelPath $ExcelFile -SearchCol $SearchColumn -RenameCol $RenameColumn -Sheet $SheetName
+    $lookupData = Load-ExcelData -ExcelPath $ExcelFile -Col $Column -Sheet $SheetName
 
     # Find PDF files matching pattern
     $pdfFiles = Get-ChildItem -Path $PDFFolder -Filter "PO_*.pdf" | Where-Object { $_.Name -match 'PO_\d{10}\.pdf' }
